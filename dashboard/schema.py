@@ -3,6 +3,8 @@ from django.db.models import Count, Sum, Q, Avg
 from django.db.models.functions import TruncMonth
 from claim.models import Claim
 from .gql_queries import *
+from dashboard.apps import DashboardConfig
+from .utils import get_current_user_hf
 
 
 class Query(graphene.ObjectType):
@@ -38,14 +40,25 @@ class Query(graphene.ObjectType):
 
     def resolve_epidemiological_analytics(self, info, **kwargs):
         """Single query for disease analytics."""
+
+        user = info.context.user
+        hf_filter = {}
+
+        if DashboardConfig.dashboard_per_hf:
+            hf = get_current_user_hf(user)
+            if hf:
+                hf_filter = {"health_facility": hf}
+
+        base_qs = Claim.objects.filter(validity_to__isnull=True, icd__isnull=False, **hf_filter)
+
         disease_data = (
-            Claim.objects.filter(validity_to__isnull=True, icd__isnull=False)
+            base_qs
             .values('icd__name')
             .annotate(count=Count('id'), total_cost=Sum('claimed'))
             .order_by('-count')[:10]
         )
         trend_data = (
-            Claim.objects.filter(validity_to__isnull=True, icd__isnull=False)
+            base_qs
             .annotate(month=TruncMonth('date_claimed'))
             .values('month')
             .annotate(count=Count('id'))
@@ -68,7 +81,18 @@ class Query(graphene.ObjectType):
 
     def resolve_customer_journey_analytics(self, info, **kwargs):
         """Optimized single query for journey data."""
-        counts = Claim.objects.filter(validity_to__isnull=True).aggregate(
+
+        user = info.context.user
+        hf_filter = {}
+
+        if DashboardConfig.dashboard_per_hf:
+            hf = get_current_user_hf(user)
+            if hf:
+                hf_filter = {"health_facility": hf}
+
+        base_qs = Claim.objects.filter(validity_to__isnull=True, **hf_filter)
+
+        counts = base_qs.aggregate(
             entered=Count('id', filter=Q(status__gte=2)),
             checked=Count('id', filter=Q(status__gte=4)),
             processed=Count('id', filter=Q(status__gte=16)),
@@ -76,7 +100,7 @@ class Query(graphene.ObjectType):
             pending_feedback=Count('id', filter=Q(status__gte=16, feedback_status=1))
         )
         rejection_data = (
-            Claim.objects.filter(validity_to__isnull=True, status=1, rejection_reason__isnull=False)
+            base_qs.filter(status=1, rejection_reason__isnull=False)
             .values('rejection_reason')
             .annotate(count=Count('id'))
             .order_by('-count')[:5]
@@ -101,8 +125,18 @@ class Query(graphene.ObjectType):
 
     def resolve_operational_analytics(self, info, **kwargs):
         """Simplified operational metrics."""
+        user = info.context.user
+        hf_filter = {}
+
+        if DashboardConfig.dashboard_per_hf:
+            hf = get_current_user_hf(user)
+            if hf:
+                hf_filter = {"health_facility": hf}
+
+        base_qs = Claim.objects.filter(validity_to__isnull=True, health_facility__isnull=False, **hf_filter)
+                
         facility_data = (
-            Claim.objects.filter(validity_to__isnull=True, health_facility__isnull=False)
+            base_qs
             .values('health_facility__name')
             .annotate(
                 total_claims=Count('id'),
@@ -133,10 +167,19 @@ class Query(graphene.ObjectType):
         from django.db.models import Case, When, IntegerField, CharField, Value  
         from datetime import datetime, timedelta
         
+        user = info.context.user
+        hf_filter = {}
+
+        if DashboardConfig.dashboard_per_hf:
+            hf = get_current_user_hf(user)
+            if hf:
+                hf_filter = {"health_facility": hf}
+        
         # Base queryset for recent claims
         recent_claims = Claim.objects.filter(
             validity_to__isnull=True,
-            date_claimed__gte=datetime.now() - timedelta(days=365)
+            date_claimed__gte=datetime.now() - timedelta(days=365),
+            **hf_filter
         )
         
         # 1. Beneficiary Coverage Analysis by Family Size and Vulnerability
@@ -255,14 +298,24 @@ class Query(graphene.ObjectType):
         )
     def resolve_analytics(self, info, **kwargs):
         """Top claims and facility totals."""
+        user = info.context.user
+        hf_filter = {}
+
+        if DashboardConfig.dashboard_per_hf:
+            hf = get_current_user_hf(user)
+            if hf:
+                hf_filter = {"health_facility": hf}
+
+        base_qs = Claim.objects.filter(validity_to__isnull=True, **hf_filter)
+
         top_claims_qs = (
-            Claim.objects.filter(validity_to__isnull=True)
+            base_qs
             .select_related('health_facility')
             .order_by('-claimed')[:10]
             .values('id', 'code', 'claimed', 'health_facility__name')
         )
         facility_totals_qs = (
-            Claim.objects.filter(validity_to__isnull=True)
+            base_qs
             .values('health_facility__name')
             .annotate(total_claimed=Sum('claimed'))
             .order_by('-total_claimed')[:10]
@@ -296,8 +349,18 @@ class Query(graphene.ObjectType):
 
     def resolve_dashboard(self, info, **kwargs):
         """Healthcare claims dashboard with relevant metrics for all available data."""
-        
-        dashboard_data = Claim.objects.filter(validity_to__isnull=True).aggregate(
+
+        user = info.context.user
+        hf_filter = {}
+
+        if DashboardConfig.dashboard_per_hf:
+            hf = get_current_user_hf(user)
+            if hf:
+                hf_filter = {"health_facility": hf}
+
+        base_qs = Claim.objects.filter(validity_to__isnull=True, **hf_filter)
+
+        dashboard_data = base_qs.aggregate(
             # Claim Processing Status
             claims_entered=Count('id', filter=Q(status=Claim.STATUS_ENTERED)),
             claims_checked=Count('id', filter=Q(status=Claim.STATUS_CHECKED)),

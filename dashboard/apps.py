@@ -3,13 +3,14 @@ from django.apps import AppConfig
 MODULE_NAME = "dashboard"
 
 DEFAULT_CFG = {
-
+    "dashboard_per_hf": False,
 }
 
 
 class DashboardConfig(AppConfig):
     name = MODULE_NAME
 
+    dashboard_per_hf = None
 
     def __load_config(self, cfg):
         for field in cfg:

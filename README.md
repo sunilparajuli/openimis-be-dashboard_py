@@ -103,7 +103,8 @@ Resolvers in `schema/queries.py` implement optimized Django ORM queries with `an
 Configurable via `core.ModuleConfiguration`:  
 - `dashboard.default_time_range`: Default time period for analytics queries (e.g., last 12 months).  
 - `dashboard.top_claims_limit`: Maximum number of claims returned in `analytics` queries (Default: `10`).  
-- `dashboard.financial_thresholds`: Thresholds for high-value or catastrophic claims.  
+- `dashboard.financial_thresholds`: Thresholds for high-value or catastrophic claims. 
+- `dashboard_per_hf`: filters dashboard elements by the Health Facility linked to the logged-in user (Default: `False`).
 
 ---
 
